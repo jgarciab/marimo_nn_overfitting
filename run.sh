@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")"
+
+if [ ! -x ".venv/bin/python" ]; then
+    if [ -e ".venv" ]; then
+        backup_name=".venv_broken_$(date +%Y%m%d_%H%M%S)"
+        mv ".venv" "${backup_name}"
+    fi
+    uv sync
+fi
+
+exec uv run python -m marimo run app.py
+
