@@ -31,7 +31,9 @@ def test_app_keeps_the_requested_scope() -> None:
     assert "capacity_epochs" in source
     assert "mo.ui.slider(40, 200" in source
     assert "value=100, label=\"Sample size\"" in source
-    assert "value=0.2, label=\"Noise\"" in source
+    assert "value=0.2, label=\"Label noise\"" in source
+    assert "flip = rng.random(n) < noise" in source
+    assert "score + rng.normal" not in source
     assert "_epochs = capacity_epochs.value" in source
     assert "#5e548e" in source
     assert "#c9a227" in source
@@ -44,10 +46,13 @@ def test_app_keeps_the_requested_scope() -> None:
     assert "true XOR boundary" in source
     assert "ax.axhline(" in source
     assert "ax.axvline(" in source
-    assert "fitted parameter count" in source
+    assert "fitted parameters" in source
     assert "parameter_breakdown" in source
-    assert "make_metric_rows" in source
-    assert "add_gridspec(1, 2" in source
+    assert "model_summary_markdown" in source
+    assert "make_metric_rows" not in source
+    assert "add_gridspec" not in source
+    assert "|  | Best | Train | Val |" in source
+    assert "ml4p-param-box" in source
 
 
 def test_parameter_count_formula() -> None:

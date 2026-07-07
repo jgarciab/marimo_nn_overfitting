@@ -62,6 +62,19 @@ def theme(mo):
           color: #666666;
           font-size: 0.9rem;
         }}
+        .ml4p-param-box {{
+          border: 1px solid #dddddd;
+          border-radius: 6px;
+          padding: 0.75rem 0.85rem;
+          background: #fbfbfb;
+          margin: 0.25rem 0 0.9rem;
+        }}
+        .ml4p-param-number {{
+          color: var(--ml4p-accent);
+          font-size: 1.65rem;
+          font-weight: 700;
+          line-height: 1.1;
+        }}
         </style>
         """
     )
@@ -71,7 +84,7 @@ def theme(mo):
 @app.cell
 def capacity_controls(mo):
     capacity_n = mo.ui.slider(40, 200, step=20, value=100, label="Sample size")
-    capacity_noise = mo.ui.slider(0.0, 0.8, step=0.05, value=0.2, label="Noise")
+    capacity_noise = mo.ui.slider(0.0, 0.5, step=0.05, value=0.2, label="Label noise")
     capacity_layers = mo.ui.slider(1, 6, step=1, value=3, label="Hidden layers")
     capacity_units = mo.ui.slider(2, 128, step=2, value=32, label="Units per layer")
     capacity_epochs = mo.ui.slider(20, 500, step=20, value=100, label="Epochs")
@@ -159,8 +172,9 @@ def data_helpers(np):
     def make_xor_data(n: int, noise: float, seed: int):
         rng = np.random.default_rng(seed)
         x = rng.uniform(-2.2, 2.2, size=(n, 2))
-        score = x[:, 0] * x[:, 1]
-        y = (score + rng.normal(0, noise, size=n) > 0).astype(int)
+        y = (x[:, 0] * x[:, 1] > 0).astype(int)
+        flip = rng.random(n) < noise
+        y[flip] = 1 - y[flip]
         return x.astype(float), y.astype(int)
 
     def train_validation_split(x, y, validation_fraction: float, seed: int):
@@ -319,8 +333,7 @@ def mlp_helpers(np):
         y_col = y_train.reshape(-1, 1)
         train_loss = []
         validation_loss = []
-        best_loss = np.inf
-        best_epoch = 1
+        validation_accuracy = []
 
         for epoch in range(epochs):
             order = rng.permutation(len(y_train))
@@ -362,20 +375,26 @@ def mlp_helpers(np):
             p_validation = forward_pass(model, x_validation, training=False)[0]
             train_loss.append(binary_cross_entropy(y_train, p_train))
             validation_loss.append(binary_cross_entropy(y_validation, p_validation))
-
-            if validation_loss[-1] < best_loss - 1e-4:
-                best_loss = validation_loss[-1]
-                best_epoch = epoch + 1
+            validation_accuracy.append(
+                float(np.mean((p_validation.ravel() >= 0.5) == y_validation))
+            )
 
         final_train = forward_pass(model, x_train, training=False)[0]
         final_validation = forward_pass(model, x_validation, training=False)[0]
+        train_loss = np.array(train_loss)
+        validation_loss = np.array(validation_loss)
+        validation_accuracy = np.array(validation_accuracy)
+        best_idx = int(np.argmin(validation_loss))
         return {
             "model": model,
-            "train_loss": np.array(train_loss),
-            "validation_loss": np.array(validation_loss),
+            "train_loss": train_loss,
+            "validation_loss": validation_loss,
+            "validation_accuracy_history": validation_accuracy,
             "final_train_loss": binary_cross_entropy(y_train, final_train),
             "final_validation_loss": binary_cross_entropy(y_validation, final_validation),
-            "best_epoch": best_epoch,
+            "best_epoch": best_idx + 1,
+            "best_validation_loss": float(validation_loss[best_idx]),
+            "best_validation_accuracy": float(validation_accuracy[best_idx]),
             "train_accuracy": accuracy(model, x_train, y_train),
             "validation_accuracy": accuracy(model, x_validation, y_validation),
         }
@@ -493,18 +512,8 @@ def plotting_helpers(np, plt):
         class_gold,
         train_color,
         validation_color,
-        metrics_title=None,
-        metrics_rows=None,
     ):
-        if metrics_rows is None:
-            fig, ax = plt.subplots(figsize=(6.7, 4.3))
-            table_ax = None
-        else:
-            fig = plt.figure(figsize=(9.0, 4.15))
-            spec = fig.add_gridspec(1, 2, width_ratios=[3.0, 1.55], wspace=0.22)
-            ax = fig.add_subplot(spec[0, 0])
-            table_ax = fig.add_subplot(spec[0, 1])
-
+        fig, ax = plt.subplots(figsize=(6.7, 4.3))
         draw_boundary(
             ax,
             result,
@@ -519,32 +528,6 @@ def plotting_helpers(np, plt):
             train_color,
             validation_color,
         )
-        if table_ax is not None:
-            table_ax.axis("off")
-            table_ax.set_title(metrics_title, loc="left", pad=8, fontsize=12, fontweight="bold")
-            table = table_ax.table(
-                cellText=metrics_rows,
-                colLabels=["Metric", "Value"],
-                colLoc="left",
-                cellLoc="left",
-                colWidths=[0.63, 0.37],
-                bbox=[0.0, 0.02, 1.0, 0.92],
-            )
-            table.auto_set_font_size(False)
-            table.set_fontsize(8.3)
-            table.scale(1.0, 1.08)
-            for (row, col), cell in table.get_celld().items():
-                cell.set_edgecolor("#dddddd")
-                cell.set_linewidth(0.6)
-                if row == 0:
-                    cell.set_facecolor("#0b789d")
-                    cell.set_text_props(color="white", weight="bold")
-                else:
-                    cell.set_facecolor("#fbfbfb" if row % 2 == 0 else "white")
-                if row > 0 and col == 0:
-                    cell.set_text_props(color="#666666", weight="normal")
-                elif row > 0:
-                    cell.set_text_props(color="#333333", weight="bold")
         return fig
 
     def plot_boundary_comparison(
@@ -663,30 +646,33 @@ def plotting_helpers(np, plt):
         ax.legend(frameon=False, fontsize=9)
         return fig
 
-    def make_metric_rows(
-        result,
-        param_count,
-        n_train,
-        n_validation,
-        epochs,
-        x_validation,
-        y_validation,
-    ):
-        return [
-            ["Parameters", f"{param_count:,}"],
-            ["Train / val n", f"{n_train} / {n_validation}"],
-            ["Epochs", f"{epochs}"],
-            ["Best val. epoch", f"{result['best_epoch']}"],
-            ["Train accuracy", percent(result["train_accuracy"])],
-            ["Val accuracy", percent(result["validation_accuracy"])],
-            ["Val error", percent(1 - result["validation_accuracy"])],
-            ["Correct model error", percent(true_xor_error(x_validation, y_validation))],
-            ["Train loss", f"{result['final_train_loss']:.3f}"],
-            ["Val loss", f"{result['final_validation_loss']:.3f}"],
-        ]
+    def model_summary_markdown(result, x_validation, y_validation):
+        correct_error = percent(true_xor_error(x_validation, y_validation))
+        return "\n".join(
+            [
+                f"**Best = validation epoch {result['best_epoch']}.**",
+                "",
+                "|  | Best | Train | Val |",
+                "|---|---:|---:|---:|",
+                (
+                    "| Accuracy | "
+                    f"{percent(result['best_validation_accuracy'])} | "
+                    f"{percent(result['train_accuracy'])} | "
+                    f"{percent(result['validation_accuracy'])} |"
+                ),
+                (
+                    "| Loss | "
+                    f"{result['best_validation_loss']:.3f} | "
+                    f"{result['final_train_loss']:.3f} | "
+                    f"{result['final_validation_loss']:.3f} |"
+                ),
+                "",
+                f"Correct model error: **{correct_error}**.",
+            ]
+        )
 
     return (
-        make_metric_rows,
+        model_summary_markdown,
         plot_boundary_comparison,
         plot_decision_boundary,
         plot_loss_curves,
@@ -705,8 +691,8 @@ def section_capacity(
     class_gold,
     class_purple,
     compute_param_count,
-    make_metric_rows,
     make_xor_data,
+    model_summary_markdown,
     mo,
     parameter_breakdown,
     plot_decision_boundary,
@@ -746,15 +732,6 @@ def section_capacity(
         epochs=_epochs,
         seed=_seed,
     )
-    _metrics = make_metric_rows(
-        _result,
-        _param_count,
-        len(_y_train),
-        len(_y_validation),
-        _epochs,
-        _x_validation,
-        _y_validation,
-    )
     _boundary = plot_decision_boundary(
         _result,
         _x_train,
@@ -767,8 +744,19 @@ def section_capacity(
         class_gold,
         train_color,
         validation_color,
-        "Model summary",
-        _metrics,
+    )
+    _summary = mo.vstack(
+        [
+            mo.Html(
+                f"""
+                <div class="ml4p-param-box">
+                  <div class="ml4p-param-number">{_param_count:,}</div>
+                  <div>fitted parameters</div>
+                </div>
+                """
+            ),
+            mo.md(model_summary_markdown(_result, _x_validation, _y_validation)),
+        ]
     )
     _losses = plot_loss_curves(
         _result,
@@ -800,16 +788,17 @@ def section_capacity(
                 """
                 ## Many Parameters, One Validation Set
 
-                The data are a noisy XOR problem: the dashed lines at `x1 = 0`
-                and `x2 = 0` show the correct boundary before label noise.
+                The data are a noisy XOR problem. First we apply the true XOR
+                rule; then label noise flips a fraction of labels. The dashed
+                lines at `x1 = 0` and `x2 = 0` show the correct boundary before
+                those label flips.
 
                 A flexible network can fit complicated boundaries, even with
-                more fitted parameters than observations. The table prints the
-                fitted parameter count; the loss curve asks whether the fit
-                travels to validation data.
+                more fitted parameters than observations. The summary asks
+                whether the fit travels to validation data.
                 """
             ),
-            _boundary,
+            mo.hstack([_boundary, _summary], gap=1.0, wrap=True),
             _losses,
             mo.md(_param_breakdown),
         ]
