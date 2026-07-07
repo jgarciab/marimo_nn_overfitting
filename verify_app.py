@@ -42,7 +42,14 @@ def test_app_keeps_the_requested_scope() -> None:
     assert "plot_boundary_comparison" in source
     assert "Dropout + L2" in source
     assert "training, regularized" not in source
-    assert "Correct model error" in source
+    assert "Correct model error" not in source
+    assert "|  | Bayes | Best | Train | Val |" in source
+    assert "Bayes loss" in source
+    assert "bayes_metrics" in source
+    assert "Bayes = true XOR rule plus the known label-noise probability." in source
+    assert "Regularized run:" not in source
+    assert "best, no regularization" not in source
+    assert "best, dropout + L2" not in source
     assert "true XOR boundary" in source
     assert "ax.axhline(" in source
     assert "ax.axvline(" in source
@@ -51,7 +58,6 @@ def test_app_keeps_the_requested_scope() -> None:
     assert "model_summary_markdown" in source
     assert "make_metric_rows" not in source
     assert "add_gridspec" not in source
-    assert "|  | Best | Train | Val |" in source
     assert "ml4p-param-box" in source
 
 

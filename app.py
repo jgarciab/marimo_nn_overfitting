@@ -419,9 +419,20 @@ def plotting_helpers(np, plt):
     def percent(value):
         return f"{100 * value:.0f}%"
 
-    def true_xor_error(x, y):
-        true_rule = (x[:, 0] * x[:, 1] > 0).astype(int)
-        return float(np.mean(true_rule != y))
+    def true_xor_class(x):
+        return (x[:, 0] * x[:, 1] > 0).astype(int)
+
+    def binary_log_loss(y, p):
+        p = np.clip(p, 1e-7, 1 - 1e-7)
+        return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+
+    def bayes_metrics(x, y, noise):
+        true_class = true_xor_class(x)
+        p = np.where(true_class == 1, 1 - noise, noise)
+        return {
+            "accuracy": float(np.mean(true_class == y)),
+            "loss": binary_log_loss(y, p),
+        }
 
     def draw_boundary(
         ax,
@@ -577,7 +588,7 @@ def plotting_helpers(np, plt):
         fig.tight_layout()
         return fig
 
-    def plot_loss_curves(result, title, train_color, validation_color):
+    def plot_loss_curves(result, title, train_color, validation_color, bayes_loss):
         epochs = np.arange(1, len(result["train_loss"]) + 1)
         fig, ax = plt.subplots(figsize=(6.7, 3.35))
         ax.plot(
@@ -601,6 +612,13 @@ def plotting_helpers(np, plt):
             linewidth=1.5,
             label="best validation epoch",
         )
+        ax.axhline(
+            bayes_loss,
+            color="#c9a227",
+            linestyle="--",
+            linewidth=1.7,
+            label="Bayes loss",
+        )
         ax.set_title(title)
         ax.set_xlabel("epoch")
         ax.set_ylabel("binary cross-entropy")
@@ -608,7 +626,13 @@ def plotting_helpers(np, plt):
         ax.legend(frameon=False, fontsize=9)
         return fig
 
-    def plot_regularization_comparison(raw_result, regularized_result, train_color, validation_color):
+    def plot_regularization_comparison(
+        raw_result,
+        regularized_result,
+        train_color,
+        validation_color,
+        bayes_loss,
+    ):
         fig, ax = plt.subplots(figsize=(6.7, 3.55))
         ax.plot(
             raw_result["validation_loss"],
@@ -623,21 +647,12 @@ def plotting_helpers(np, plt):
             linestyle="--",
             label="validation, dropout + L2",
         )
-        ax.axvline(
-            raw_result["best_epoch"],
-            color=train_color,
-            linestyle=":",
-            linewidth=1.4,
-            alpha=0.65,
-            label="best, no regularization",
-        )
-        ax.axvline(
-            regularized_result["best_epoch"],
-            color=validation_color,
-            linestyle=":",
-            linewidth=1.4,
-            alpha=0.75,
-            label="best, dropout + L2",
+        ax.axhline(
+            bayes_loss,
+            color="#c9a227",
+            linestyle="--",
+            linewidth=1.7,
+            label="Bayes loss",
         )
         ax.set_title("Validation loss under the same architecture")
         ax.set_xlabel("epoch")
@@ -646,32 +661,34 @@ def plotting_helpers(np, plt):
         ax.legend(frameon=False, fontsize=9)
         return fig
 
-    def model_summary_markdown(result, x_validation, y_validation):
-        correct_error = percent(true_xor_error(x_validation, y_validation))
+    def model_summary_markdown(result, bayes):
         return "\n".join(
             [
                 f"**Best = validation epoch {result['best_epoch']}.**",
                 "",
-                "|  | Best | Train | Val |",
-                "|---|---:|---:|---:|",
+                "|  | Bayes | Best | Train | Val |",
+                "|---|---:|---:|---:|---:|",
                 (
                     "| Accuracy | "
+                    f"{percent(bayes['accuracy'])} | "
                     f"{percent(result['best_validation_accuracy'])} | "
                     f"{percent(result['train_accuracy'])} | "
                     f"{percent(result['validation_accuracy'])} |"
                 ),
                 (
                     "| Loss | "
+                    f"{bayes['loss']:.3f} | "
                     f"{result['best_validation_loss']:.3f} | "
                     f"{result['final_train_loss']:.3f} | "
                     f"{result['final_validation_loss']:.3f} |"
                 ),
                 "",
-                f"Correct model error: **{correct_error}**.",
+                "Bayes = true XOR rule plus the known label-noise probability.",
             ]
         )
 
     return (
+        bayes_metrics,
         model_summary_markdown,
         plot_boundary_comparison,
         plot_decision_boundary,
@@ -682,6 +699,7 @@ def plotting_helpers(np, plt):
 
 @app.cell
 def section_capacity(
+    bayes_metrics,
     capacity_activation,
     capacity_epochs,
     capacity_layers,
@@ -732,6 +750,7 @@ def section_capacity(
         epochs=_epochs,
         seed=_seed,
     )
+    _bayes = bayes_metrics(_x_validation, _y_validation, capacity_noise.value)
     _boundary = plot_decision_boundary(
         _result,
         _x_train,
@@ -755,7 +774,7 @@ def section_capacity(
                 </div>
                 """
             ),
-            mo.md(model_summary_markdown(_result, _x_validation, _y_validation)),
+            mo.md(model_summary_markdown(_result, _bayes)),
         ]
     )
     _losses = plot_loss_curves(
@@ -763,6 +782,7 @@ def section_capacity(
         "Training vs validation loss",
         train_color,
         validation_color,
+        _bayes["loss"],
     )
     _param_breakdown = parameter_breakdown(
         _x.shape[1],
@@ -781,6 +801,7 @@ def section_capacity(
         "activation": capacity_activation.value,
         "epochs": _epochs,
         "seed": _seed,
+        "bayes_loss": _bayes["loss"],
     }
     mo.vstack(
         [
@@ -839,6 +860,7 @@ def section_regularization(
         _regularized,
         train_color,
         validation_color,
+        capacity_bundle["bayes_loss"],
     )
     _boundary_pair = plot_boundary_comparison(
         capacity_bundle["result"],
@@ -871,15 +893,6 @@ def section_regularization(
                 so very sharp boundaries are harder to learn. Neither option
                 reduces the number of fitted parameters; both change which
                 parameter values are easy for the optimizer to choose.
-                """
-            ),
-            mo.md(
-                f"""
-                Regularized run: **{capacity_bundle["param_count"]:,}** fitted
-                parameters, **dropout = {dropout_rate.value:.2f}**,
-                **L2 = {l2_strength.value:.3f}**, same initial weights, same
-                train/validation split, same **{capacity_bundle["epochs"]}**
-                epochs.
                 """
             ),
             _boundary_pair,
