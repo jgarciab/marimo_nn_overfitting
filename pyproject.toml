@@ -1,7 +1,7 @@
 [project]
 name = "marimo-nn-overfitting"
 version = "0.1.0"
-description = "Standalone Marimo teaching app on neural-network capacity, overfitting, dropout, and L1/L2 regularization"
+description = "Standalone Marimo teaching app on neural-network capacity, overfitting, dropout, and L2 regularization"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

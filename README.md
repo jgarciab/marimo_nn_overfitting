@@ -6,7 +6,7 @@ The app uses one XOR dataset to make a single question concrete: if neural
 networks can fit many parameters, why do they not always overfit? Students
 compare decision boundaries, inspect the number of fitted weights and biases,
 watch training and validation loss diverge, and then regularize the same model
-with dropout plus L1/L2 penalties.
+with dropout plus L2 weight decay.
 
 It runs entirely in the browser as a static WebAssembly bundle, with no server,
 external data, `torch`, TensorFlow, or scikit-learn.

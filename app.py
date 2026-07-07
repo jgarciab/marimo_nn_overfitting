@@ -74,22 +74,22 @@ def capacity_controls(mo):
     capacity_noise = mo.ui.slider(0.0, 0.8, step=0.05, value=0.2, label="Noise")
     capacity_layers = mo.ui.slider(1, 6, step=1, value=3, label="Hidden layers")
     capacity_units = mo.ui.slider(2, 128, step=2, value=32, label="Units per layer")
+    capacity_epochs = mo.ui.slider(20, 500, step=20, value=100, label="Epochs")
     capacity_activation = mo.ui.dropdown(
         options=["ReLU", "tanh", "linear"],
         value="ReLU",
         label="Activation",
     )
     dropout_rate = mo.ui.slider(0.0, 0.6, step=0.05, value=0.25, label="Dropout rate")
-    l1_strength = mo.ui.slider(0.0, 0.02, step=0.001, value=0.0, label="L1 penalty")
     l2_strength = mo.ui.slider(0.0, 0.05, step=0.001, value=0.005, label="L2 penalty")
     return (
         capacity_activation,
+        capacity_epochs,
         capacity_layers,
         capacity_n,
         capacity_noise,
         capacity_units,
         dropout_rate,
-        l1_strength,
         l2_strength,
     )
 
@@ -97,12 +97,12 @@ def capacity_controls(mo):
 @app.cell
 def sidebar(
     capacity_activation,
+    capacity_epochs,
     capacity_layers,
     capacity_n,
     capacity_noise,
     capacity_units,
     dropout_rate,
-    l1_strength,
     l2_strength,
     mo,
 ):
@@ -115,15 +115,15 @@ def sidebar(
             mo.md("**Network**"),
             capacity_layers,
             capacity_units,
+            capacity_epochs,
             capacity_activation,
             mo.md("**Regularization**"),
             dropout_rate,
-            l1_strength,
             l2_strength,
             mo.md(
                 """
                 <span class="ml4p-small">The second fit keeps the same data,
-                architecture, initial weights, and 100 epochs; only
+                architecture, initial weights, and epoch count; only
                 regularization changes.</span>
                 """
             ),
@@ -147,15 +147,6 @@ def title(css, mo):
 
                 **Motivating question:** neural networks can have many, many
                 fitted parameters. Why do they not always overfit?
-                """
-            ),
-            mo.Html(
-                """
-                <div class="ml4p-callout">
-                This app keeps one dataset fixed: <strong>XOR</strong>. The
-                point is to compare what the network can fit with what it can
-                predict on held-out data.
-                </div>
                 """
             ),
         ]
@@ -314,7 +305,6 @@ def mlp_helpers(np):
         epochs=200,
         batch_size=32,
         dropout_rate=0.0,
-        l1=0.0,
         l2=0.0,
         seed=1,
     ):
@@ -360,7 +350,6 @@ def mlp_helpers(np):
                             local_da = local_da * mask
                         local_dz = local_da * activation_backward(z, model["activation"])
                     grad_w[i] = a_prev.T @ local_dz
-                    grad_w[i] += l1 * np.sign(model["weights"][i])
                     grad_w[i] += l2 * model["weights"][i]
                     grad_b[i] = np.sum(local_dz, axis=0, keepdims=True)
                     if i > 0:
@@ -398,9 +387,22 @@ def mlp_helpers(np):
 def plotting_helpers(np, plt):
     from matplotlib.colors import LinearSegmentedColormap
 
+    def remove_outer_box(ax):
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#bbbbbb")
+        ax.spines["bottom"].set_color("#bbbbbb")
+
     def class_colors(y, class_purple, class_gold):
         colors = np.array([class_purple, class_gold])
         return colors[y.astype(int)]
+
+    def percent(value):
+        return f"{100 * value:.0f}%"
+
+    def true_xor_error(x, y):
+        true_rule = (x[:, 0] * x[:, 1] > 0).astype(int)
+        return float(np.mean(true_rule != y))
 
     def draw_boundary(
         ax,
@@ -435,6 +437,22 @@ def plotting_helpers(np, plt):
             alpha=0.42,
         )
         ax.contour(grid_x, grid_y, p, levels=[0.5], colors="#222222", linewidths=2.0)
+        ax.axhline(
+            0,
+            color="#666666",
+            linestyle="--",
+            linewidth=1.2,
+            alpha=0.9,
+            label="true XOR boundary",
+        )
+        ax.axvline(
+            0,
+            color="#666666",
+            linestyle="--",
+            linewidth=1.2,
+            alpha=0.9,
+            label="_nolegend_",
+        )
         ax.scatter(
             x_train[:, 0],
             x_train[:, 1],
@@ -460,7 +478,8 @@ def plotting_helpers(np, plt):
         ax.set_ylabel("x2")
         ax.set_xlim(-2.7, 2.7)
         ax.set_ylim(-2.7, 2.7)
-        ax.legend(frameon=False, loc="upper right", fontsize=9)
+        remove_outer_box(ax)
+        ax.legend(frameon=False, loc="upper right", fontsize=8)
 
     def plot_decision_boundary(
         result,
@@ -481,8 +500,8 @@ def plotting_helpers(np, plt):
             fig, ax = plt.subplots(figsize=(6.7, 4.3))
             table_ax = None
         else:
-            fig = plt.figure(figsize=(8.4, 4.15))
-            spec = fig.add_gridspec(1, 2, width_ratios=[3.2, 1.35], wspace=0.25)
+            fig = plt.figure(figsize=(9.0, 4.15))
+            spec = fig.add_gridspec(1, 2, width_ratios=[3.0, 1.55], wspace=0.22)
             ax = fig.add_subplot(spec[0, 0])
             table_ax = fig.add_subplot(spec[0, 1])
 
@@ -505,20 +524,26 @@ def plotting_helpers(np, plt):
             table_ax.set_title(metrics_title, loc="left", pad=8, fontsize=12, fontweight="bold")
             table = table_ax.table(
                 cellText=metrics_rows,
+                colLabels=["Metric", "Value"],
+                colLoc="left",
                 cellLoc="left",
                 colWidths=[0.63, 0.37],
-                loc="center",
+                bbox=[0.0, 0.02, 1.0, 0.92],
             )
             table.auto_set_font_size(False)
-            table.set_fontsize(9)
-            table.scale(1.0, 1.35)
+            table.set_fontsize(8.3)
+            table.scale(1.0, 1.08)
             for (row, col), cell in table.get_celld().items():
                 cell.set_edgecolor("#dddddd")
                 cell.set_linewidth(0.6)
-                cell.set_facecolor("white")
-                if col == 0:
-                    cell.set_text_props(color="#666666", weight="normal")
+                if row == 0:
+                    cell.set_facecolor("#0b789d")
+                    cell.set_text_props(color="white", weight="bold")
                 else:
+                    cell.set_facecolor("#fbfbfb" if row % 2 == 0 else "white")
+                if row > 0 and col == 0:
+                    cell.set_text_props(color="#666666", weight="normal")
+                elif row > 0:
                     cell.set_text_props(color="#333333", weight="bold")
         return fig
 
@@ -558,7 +583,7 @@ def plotting_helpers(np, plt):
             x_validation,
             y_validation,
             predict_proba,
-            "Dropout + L1/L2",
+            "Dropout + L2",
             class_purple,
             class_gold,
             train_color,
@@ -596,30 +621,16 @@ def plotting_helpers(np, plt):
         ax.set_title(title)
         ax.set_xlabel("epoch")
         ax.set_ylabel("binary cross-entropy")
+        remove_outer_box(ax)
         ax.legend(frameon=False, fontsize=9)
         return fig
 
     def plot_regularization_comparison(raw_result, regularized_result, train_color, validation_color):
         fig, ax = plt.subplots(figsize=(6.7, 3.55))
         ax.plot(
-            raw_result["train_loss"],
-            color=train_color,
-            linewidth=2,
-            alpha=0.55,
-            label="training, no regularization",
-        )
-        ax.plot(
-            regularized_result["train_loss"],
-            color=train_color,
-            linestyle=":",
-            linewidth=2,
-            label="training, regularized",
-        )
-        ax.plot(
             raw_result["validation_loss"],
-            color=validation_color,
+            color=train_color,
             linewidth=2,
-            alpha=0.55,
             label="validation, no regularization",
         )
         ax.plot(
@@ -627,26 +638,51 @@ def plotting_helpers(np, plt):
             color=validation_color,
             linewidth=2,
             linestyle="--",
-            label="validation, regularized",
+            label="validation, dropout + L2",
         )
-        ax.set_title("Same network and data; regularization changes training")
+        ax.axvline(
+            raw_result["best_epoch"],
+            color=train_color,
+            linestyle=":",
+            linewidth=1.4,
+            alpha=0.65,
+            label="best, no regularization",
+        )
+        ax.axvline(
+            regularized_result["best_epoch"],
+            color=validation_color,
+            linestyle=":",
+            linewidth=1.4,
+            alpha=0.75,
+            label="best, dropout + L2",
+        )
+        ax.set_title("Validation loss under the same architecture")
         ax.set_xlabel("epoch")
         ax.set_ylabel("binary cross-entropy")
+        remove_outer_box(ax)
         ax.legend(frameon=False, fontsize=9)
         return fig
 
-    def make_metric_rows(result, param_count, n_train, n_validation):
-        loss_gap = result["final_validation_loss"] - result["final_train_loss"]
-        accuracy_gap = result["train_accuracy"] - result["validation_accuracy"]
+    def make_metric_rows(
+        result,
+        param_count,
+        n_train,
+        n_validation,
+        epochs,
+        x_validation,
+        y_validation,
+    ):
         return [
             ["Parameters", f"{param_count:,}"],
             ["Train / val n", f"{n_train} / {n_validation}"],
-            ["Train acc.", f"{result['train_accuracy']:.2f}"],
-            ["Val acc.", f"{result['validation_accuracy']:.2f}"],
+            ["Epochs", f"{epochs}"],
+            ["Best val. epoch", f"{result['best_epoch']}"],
+            ["Train accuracy", percent(result["train_accuracy"])],
+            ["Val accuracy", percent(result["validation_accuracy"])],
+            ["Val error", percent(1 - result["validation_accuracy"])],
+            ["Correct model error", percent(true_xor_error(x_validation, y_validation))],
             ["Train loss", f"{result['final_train_loss']:.3f}"],
             ["Val loss", f"{result['final_validation_loss']:.3f}"],
-            ["Loss gap", f"{loss_gap:.3f}"],
-            ["Acc. gap", f"{accuracy_gap:.2f}"],
         ]
 
     return (
@@ -661,6 +697,7 @@ def plotting_helpers(np, plt):
 @app.cell
 def section_capacity(
     capacity_activation,
+    capacity_epochs,
     capacity_layers,
     capacity_n,
     capacity_noise,
@@ -681,7 +718,7 @@ def section_capacity(
     validation_color,
 ):
     _seed = 13
-    _epochs = 100
+    _epochs = capacity_epochs.value
     _x, _y = make_xor_data(
         capacity_n.value,
         capacity_noise.value,
@@ -714,6 +751,9 @@ def section_capacity(
         _param_count,
         len(_y_train),
         len(_y_validation),
+        _epochs,
+        _x_validation,
+        _y_validation,
     )
     _boundary = plot_decision_boundary(
         _result,
@@ -760,6 +800,9 @@ def section_capacity(
                 """
                 ## Many Parameters, One Validation Set
 
+                The data are a noisy XOR problem: the dashed lines at `x1 = 0`
+                and `x2 = 0` show the correct boundary before label noise.
+
                 A flexible network can fit complicated boundaries, even with
                 more fitted parameters than observations. The table prints the
                 fitted parameter count; the loss curve asks whether the fit
@@ -780,7 +823,6 @@ def section_regularization(
     class_gold,
     class_purple,
     dropout_rate,
-    l1_strength,
     l2_strength,
     mo,
     plot_boundary_comparison,
@@ -800,7 +842,6 @@ def section_regularization(
         activation=capacity_bundle["activation"],
         epochs=capacity_bundle["epochs"],
         dropout_rate=dropout_rate.value,
-        l1=l1_strength.value,
         l2=l2_strength.value,
         seed=capacity_bundle["seed"],
     )
@@ -829,24 +870,26 @@ def section_regularization(
                 """
                 ---
 
-                ## Add Regularization To The Same Network
+                ## Regularization: Same Network, Different Training Rule
 
                 This repeats the plots above with the **same XOR data split**
                 and the **same architecture**: same layers, units, activation,
                 and number of fitted parameters. Only the training rule changes.
 
-                Dropout thins the hidden layers during training. L1 and L2 add
-                penalties to the weights. None of these reduces the number of
-                fitted parameters; they change which parameter values are easy
-                for the optimizer to choose.
+                **Dropout** randomly removes hidden activations during training,
+                so the network cannot rely too heavily on one hidden unit.
+                **L2 regularization** (weight decay) penalizes large weights,
+                so very sharp boundaries are harder to learn. Neither option
+                reduces the number of fitted parameters; both change which
+                parameter values are easy for the optimizer to choose.
                 """
             ),
             mo.md(
                 f"""
                 Regularized run: **{capacity_bundle["param_count"]:,}** fitted
                 parameters, **dropout = {dropout_rate.value:.2f}**,
-                **L1 = {l1_strength.value:.3f}**, **L2 = {l2_strength.value:.3f}**,
-                same initial weights, same train/validation split, same 100
+                **L2 = {l2_strength.value:.3f}**, same initial weights, same
+                train/validation split, same **{capacity_bundle["epochs"]}**
                 epochs.
                 """
             ),

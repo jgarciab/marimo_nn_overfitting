@@ -26,19 +26,24 @@ def test_app_keeps_the_requested_scope() -> None:
     assert "early_stopping" not in source
     assert "Use early stopping" not in source
     assert "label=\"Seed\"" not in source
-    assert "label=\"Epochs\"" not in source
+    assert "label=\"Epochs\"" in source
     assert "capacity_seed" not in source
-    assert "capacity_epochs" not in source
+    assert "capacity_epochs" in source
     assert "mo.ui.slider(40, 200" in source
     assert "value=100, label=\"Sample size\"" in source
     assert "value=0.2, label=\"Noise\"" in source
-    assert "_epochs = 100" in source
+    assert "_epochs = capacity_epochs.value" in source
     assert "#5e548e" in source
     assert "#c9a227" in source
-    assert "l1_strength" in source
+    assert "l1_strength" not in source
     assert "l2_strength" in source
     assert "plot_boundary_comparison" in source
-    assert "Dropout + L1/L2" in source
+    assert "Dropout + L2" in source
+    assert "training, regularized" not in source
+    assert "Correct model error" in source
+    assert "true XOR boundary" in source
+    assert "ax.axhline(" in source
+    assert "ax.axvline(" in source
     assert "fitted parameter count" in source
     assert "parameter_breakdown" in source
     assert "make_metric_rows" in source
