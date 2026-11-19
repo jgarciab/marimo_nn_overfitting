@@ -85,16 +85,16 @@ def theme(mo):
 def capacity_controls(mo):
     capacity_n = mo.ui.slider(40, 200, step=20, value=100, label="Sample size")
     capacity_noise = mo.ui.slider(0.0, 0.5, step=0.05, value=0.2, label="Label noise")
-    capacity_layers = mo.ui.slider(1, 6, step=1, value=3, label="Hidden layers")
-    capacity_units = mo.ui.slider(2, 128, step=2, value=32, label="Units per layer")
-    capacity_epochs = mo.ui.slider(20, 500, step=20, value=100, label="Epochs")
+    capacity_layers = mo.ui.slider(1, 6, step=1, value=4, label="Hidden layers")
+    capacity_units = mo.ui.slider(2, 128, step=2, value=64, label="Units per layer")
+    capacity_epochs = mo.ui.slider(20, 500, step=20, value=300, label="Epochs")
     capacity_activation = mo.ui.dropdown(
         options=["ReLU", "tanh", "linear"],
         value="ReLU",
         label="Activation",
     )
-    dropout_rate = mo.ui.slider(0.0, 0.6, step=0.05, value=0.25, label="Dropout rate")
-    l2_strength = mo.ui.slider(0.0, 0.05, step=0.001, value=0.005, label="L2 penalty")
+    dropout_rate = mo.ui.slider(0.0, 0.6, step=0.05, value=0.0, label="Dropout rate")
+    l2_strength = mo.ui.slider(0.0, 0.05, step=0.001, value=0.0, label="L2 penalty")
     return (
         capacity_activation,
         capacity_epochs,
